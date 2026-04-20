@@ -10,6 +10,8 @@
             --card-bg: #242424;
             --text: #e0e0e0;
             --accent: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
         }
         * { box-sizing: border-box; }
         body {
@@ -24,11 +26,62 @@
         }
         .header {
             text-align: center;
-            margin-bottom: 60px;
+            margin-bottom: 40px;
             max-width: 800px;
         }
         .header h1 { font-weight: 700; letter-spacing: -0.02em; margin-bottom: 8px; }
-        .header p { color: #888; line-height: 1.5; }
+        .header p { color: #888; line-height: 1.5; margin-bottom: 24px; }
+
+        /* --- GLOBAL TAB CONTROLS --- */
+        .global-tabs {
+            display: inline-flex;
+            background: #111;
+            padding: 4px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #333;
+        }
+        .tab {
+            padding: 8px 24px;
+            cursor: pointer;
+            border-radius: 9px;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.2s ease;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .tab.active {
+            background: var(--accent);
+            color: white;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        /* --- INTERNAL PHASE TABS --- */
+        .phase-tabs {
+            display: inline-flex;
+            background: #111;
+            padding: 3px;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            border: 1px solid #333;
+        }
+        .phase-tab {
+            padding: 6px 16px;
+            cursor: pointer;
+            border-radius: 7px;
+            font-weight: 600;
+            font-size: 11px;
+            transition: all 0.2s ease;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .phase-tab.active {
+            background: #444;
+            color: #fff;
+        }
 
         .gallery {
             display: flex;
@@ -60,15 +113,15 @@
         svg {
             width: 100%;
             height: 100%;
-            transform: rotate(-78.75deg); /* Align LED 0 to 12 o'clock */
+            transform: rotate(-78.75deg); /* Align LED #1 (Index 0) to 12 o'clock */
         }
-        .led-bg { stroke: #333; stroke-linecap: round; stroke-width: 6; fill: none; }
+        .led-bg { stroke: #2a2a2a; stroke-linecap: round; stroke-width: 6; fill: none; }
         .led {
             stroke: #fff;
             stroke-linecap: round;
             stroke-width: 6;
             fill: none;
-            opacity: 0;
+            opacity: 0.02; /* Darkened floor for visibility when off */
             filter: drop-shadow(0 0 5px rgba(255,255,255,0.8));
             transition: opacity 0.016s linear;
         }
@@ -97,7 +150,7 @@
         }
 
         /* --- TEXT STYLING --- */
-        .info h2 { margin: 0 0 12px 0; font-size: 20px; color: #fff; }
+        .info h2 { margin: 0 0 8px 0; font-size: 20px; color: #fff; }
         .info p { margin: 0 0 20px 0; font-size: 14px; color: #aaa; line-height: 1.6; }
         
         /* --- TIMELINE SPEC UI --- */
@@ -132,14 +185,10 @@
         }
         .timeline-legend {
             display: flex;
-            flex-direction: column;
-            gap: 8px;
+            flex-direction: column; gap: 8px;
         }
         .legend-item {
-            display: flex;
-            justify-content: space-between;
-            font-size: 11px;
-            color: #ccc;
+            display: flex; justify-content: space-between; font-size: 11px; color: #ccc;
         }
         .legend-left { display: flex; align-items: center; gap: 8px; }
         .legend-color { width: 8px; height: 8px; border-radius: 2px; }
@@ -149,16 +198,24 @@
 <body>
 
     <div class="header">
-        <h1>Washing Machine UI Gallery</h1>
-        <p>Premium embedded sequence library. Hand-off ready timelines detailing physics, duration, and hardware logic for each functional state.</p>
+        <h1>E&H LED Knob Behavior</h1>
+        <p>Physical LED Alignment: #1 at 12 o'clock, incrementing Clockwise to #16. Home Position at LED #9.</p>
+        
+        <div class="global-tabs" id="appliance-selector">
+            <div class="tab active" data-mode="washer">Washer</div>
+            <div class="tab" data-mode="dryer">Dryer</div>
+        </div>
     </div>
 
     <div class="gallery" id="gallery-root"></div>
 
     <script>
         const LED_COUNT = 16;
-        const HOME = 8;
-        const TARGET = 14; 
+        const HOME_IDX = 8; // Physical LED #9
+        
+        let currentMode = 'washer';
+        let currentPhase = 'sense'; 
+        let activeAnimations = [];
 
         const ease = {
             inOutQuad: t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2,
@@ -168,11 +225,14 @@
         };
 
         class AnimationInstance {
-            constructor(title, description, steps, drawFn) {
+            constructor(id, title, description, steps, drawFn, config = {}) {
+                this.id = id;
                 this.drawFn = drawFn;
                 this.steps = steps;
                 this.totalDuration = steps.reduce((acc, s) => acc + s.duration, 0);
                 this.leds = new Array(LED_COUNT).fill(0);
+                this.isDestroyed = false;
+                this.config = config;
                 this.createUI(title, description);
                 this.animate();
             }
@@ -183,7 +243,6 @@
                 
                 let trackHTML = '';
                 let legendHTML = '';
-                
                 this.steps.forEach(step => {
                     const pct = (step.duration / this.totalDuration) * 100;
                     trackHTML += `<div class="timeline-step" style="width: ${pct}%; background-color: ${step.color};"></div>`;
@@ -198,6 +257,19 @@
                     `;
                 });
 
+                const phaseTabs = this.config.showPhaseTabs ? `
+                    <div class="phase-tabs">
+                        ${currentMode === 'washer' ? `
+                            <div class="phase-tab ${currentPhase === 'sense' ? 'active' : ''}" data-phase="sense">Sense</div>
+                            <div class="phase-tab ${currentPhase === 'wash' ? 'active' : ''}" data-phase="wash">Wash</div>
+                            <div class="phase-tab ${currentPhase === 'spin' ? 'active' : ''}" data-phase="spin">Spin</div>
+                        ` : `
+                            <div class="phase-tab ${currentPhase === 'sense' ? 'active' : ''}" data-phase="sense">Sense</div>
+                            <div class="phase-tab ${currentPhase === 'dry' ? 'active' : ''}" data-phase="dry">Drying</div>
+                        `}
+                    </div>
+                ` : '';
+
                 row.innerHTML = `
                     <div class="knob-view">
                         <svg viewBox="0 0 300 300">
@@ -207,11 +279,12 @@
                         <div class="metallic-knob"></div>
                     </div>
                     <div class="info">
+                        ${phaseTabs}
                         <h2>${title}</h2>
                         <p>${description}</p>
                         <div class="timeline-container">
                             <div class="timeline-header">
-                                <span>Sequence Spec</span>
+                                <span>Logic Spec</span>
                                 <span>Loop: ${this.totalDuration}ms</span>
                             </div>
                             <div class="timeline-track">${trackHTML}</div>
@@ -221,30 +294,40 @@
                 `;
                 
                 document.getElementById('gallery-root').appendChild(row);
+                
+                row.querySelectorAll('.phase-tab').forEach(tab => {
+                    tab.addEventListener('click', (e) => {
+                        currentPhase = e.target.dataset.phase;
+                        renderGallery();
+                    });
+                });
+
                 this.ledElements = [];
                 const layer = row.querySelector('.led-layer');
                 for (let i = 0; i < LED_COUNT; i++) {
                     const angle = (i / LED_COUNT) * Math.PI * 2;
-                    const x1 = 150 + Math.cos(angle) * 112, y1 = 150 + Math.sin(angle) * 112;
-                    const x2 = 150 + Math.cos(angle) * 126, y2 = 150 + Math.sin(angle) * 126;
-                    const bg = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    bg.setAttribute("x1", x1); bg.setAttribute("y1", y1); bg.setAttribute("x2", x2); bg.setAttribute("y2", y2);
-                    bg.setAttribute("class", "led-bg");
-                    layer.appendChild(bg);
+                    
+                    const bgLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    bgLine.setAttribute("x1", 150 + Math.cos(angle) * 112); bgLine.setAttribute("y1", 150 + Math.sin(angle) * 112);
+                    bgLine.setAttribute("x2", 150 + Math.cos(angle) * 126); bgLine.setAttribute("y2", 150 + Math.sin(angle) * 126);
+                    bgLine.setAttribute("class", "led-bg");
+                    layer.appendChild(bgLine);
+
                     const fg = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    fg.setAttribute("x1", x1); fg.setAttribute("y1", y1); fg.setAttribute("x2", x2); fg.setAttribute("y2", y2);
+                    fg.setAttribute("x1", 150 + Math.cos(angle) * 112); fg.setAttribute("y1", 150 + Math.sin(angle) * 112);
+                    fg.setAttribute("x2", 150 + Math.cos(angle) * 126); fg.setAttribute("y2", 150 + Math.sin(angle) * 126);
                     fg.setAttribute("class", "led");
                     layer.appendChild(fg);
                     this.ledElements.push(fg);
                 }
             }
 
+            destroy() { this.isDestroyed = true; }
             clear() { this.leds.fill(0); }
-            setLED(index, brightness, minLimit = -999) {
-                if (minLimit !== -999 && index < minLimit) return;
+            setLED(index, brightness, limit = -999) {
+                if (limit !== -999 && index < limit) return;
                 let i = ((index % LED_COUNT) + LED_COUNT) % LED_COUNT;
-                let floor = Math.floor(i);
-                let frac = i - floor;
+                let floor = Math.floor(i), frac = i - floor;
                 this.addBrightness(floor, brightness * (1 - frac));
                 this.addBrightness(floor + 1, brightness * frac);
             }
@@ -252,12 +335,17 @@
                 let i = ((idx % LED_COUNT) + LED_COUNT) % LED_COUNT;
                 this.leds[i] = Math.min(255, this.leds[i] + val);
             }
-            render() {
-                this.ledElements.forEach((el, i) => { el.style.opacity = this.leds[i] / 255; });
+            render() { 
+                this.ledElements.forEach((el, i) => { 
+                    // Maintain a floor of 0.02 opacity even when brightness is 0
+                    const activeOpacity = this.leds[i] / 255;
+                    el.style.opacity = 0.02 + (activeOpacity * 0.98); 
+                }); 
             }
             animate() {
                 const startTime = Date.now();
                 const loop = () => {
+                    if (this.isDestroyed) return;
                     this.clear();
                     this.drawFn(Date.now() - startTime, this);
                     this.render();
@@ -267,130 +355,198 @@
             }
         }
 
-        // --- 1. POWER ON ---
-        new AnimationInstance(
-            "Power On", 
-            "Kinetic sweep from Home position with a calculated gap before target settle.",
-            [
-                { name: "Kinetic Sweep", duration: 1200, color: "#3b82f6", curve: "Sine In-Out" },
-                { name: "Hold Gap", duration: 150, color: "#444", curve: "Linear" },
-                { name: "Reveal Target", duration: 250, color: "#10b981", curve: "Instant" },
-                { name: "Loop Reset", duration: 2400, color: "transparent", curve: "Static" }
-            ],
-            (ms, k) => {
-                const sweep = 1200;
-                const gap = 150;
-                const total = 4000;
-                const dist = 22; // From 8 to 14 (6) + 1 full loop (16) = 22
-                let elapsed = ms % total;
+        function renderGallery() {
+            activeAnimations.forEach(a => a.destroy());
+            activeAnimations = [];
+            document.getElementById('gallery-root').innerHTML = '';
 
-                if (elapsed < sweep) {
-                    let t = elapsed / sweep;
-                    let easeVal = -(Math.cos(Math.PI * t) - 1.0) / 2.0;
-                    let currentPos = HOME + (easeVal * dist);
-                    let b = 255;
-                    if (t < 0.2) b = t * 5.0 * 255;
-                    else if (t > 0.8) b = (1.0 - (t - 0.8) / 0.2) * 255;
-                    let tailStretch = Math.sin(t * Math.PI); 
-                    if (b > 0) {
-                        k.setLED(currentPos, b, HOME);
-                        if (tailStretch > 0.01) {
+            const targetIdx = currentMode === 'washer' ? 14 : 5;
+            const targetLabel = currentMode === 'washer' ? "LED #15" : "LED #6";
+            const cycleName = currentMode === 'washer' ? "AI Wash cycle" : "Normal cycle (energy-testing standard)";
+
+            // --- 1. POWER ON ---
+            activeAnimations.push(new AnimationInstance(
+                "power-on", "Power On", 
+                `Kinetic sweep from Home (LED #9) settling immediately on ${targetLabel} for the ${cycleName}.`,
+                [
+                    { name: "Kinetic Sweep", duration: 1200, color: "#3b82f6", curve: "Sine In-Out" },
+                    { name: "Reveal Target", duration: 250, color: "#10b981", curve: "Instant" },
+                    { name: "Loop Reset", duration: 2550, color: "transparent", curve: "Static" }
+                ],
+                (ms, k) => {
+                    const sweep = 1200, total = 4000;
+                    let baseDist = (targetIdx - HOME_IDX);
+                    while (baseDist < 0) baseDist += 16;
+                    const dist = baseDist + 16; 
+                    let elapsed = ms % total;
+                    
+                    if (elapsed < sweep) {
+                        let t = elapsed / sweep;
+                        let easeVal = -(Math.cos(Math.PI * t) - 1.0) / 2.0;
+                        let currentPos = HOME_IDX + (easeVal * dist);
+                        let b = t < 0.2 ? t * 5 * 255 : 255; 
+                        let tailStretch = Math.sin(t * Math.PI); 
+                        if (b > 0) {
+                            k.setLED(currentPos, b, HOME_IDX);
                             for (let i = 1; i < 6; i++) {
                                 let tailPos = currentPos - (i * tailStretch);
-                                k.setLED(tailPos, (1.0 - (i / 6.0)) * b * tailStretch, HOME);
+                                let tailB = (1 - (i / 6.0)) * b * tailStretch;
+                                if (t > 0.9) tailB *= (1.0 - (t - 0.9) / 0.1); 
+                                k.setLED(tailPos, tailB, HOME_IDX);
                             }
                         }
+                    } else if (elapsed < total) {
+                        k.setLED(targetIdx, 255);
                     }
-                } else if (elapsed > sweep + gap) {
-                    k.setLED(TARGET, 255);
                 }
-            }
-        );
+            ));
 
-        // --- 2. POWER OFF ---
-        new AnimationInstance(
-            "Power Off", 
-            "Snappy counter-clockwise retreat from the active cycle back to home.",
-            [
-                { name: "CCW Unwind", duration: 600, color: "#ef4444", curve: "Cubic In-Out" },
-                { name: "Hold Sleep", duration: 2400, color: "#333", curve: "Linear" }
-            ],
-            (ms, k) => {
-                const unwind = 600;
-                const total = 3000;
-                const dist = HOME - TARGET; 
-                let elapsed = ms % total;
-                if (elapsed < unwind) {
-                    let t = elapsed / unwind;
-                    let e = ease.inOutCubic(t);
-                    let b = t > 0.7 ? Math.pow(1-(t-0.7)/0.3, 2)*255 : 255;
-                    k.setLED(TARGET + (e * dist), b);
-                } else if (elapsed > total - 400) {
-                    k.setLED(TARGET, 255); 
-                }
-            }
-        );
+            // --- 2. CYCLE PROGRESS ---
+            let progressSteps = [];
+            let progressDraw = () => {};
+            let progressDesc = "";
 
-        // --- 3. CYCLE END ---
-        new AnimationInstance(
-            "Cycle End", 
-            "Breathing notification sequence designed for persistent ambient visibility.",
-            [
-                { name: "Breath Ring", duration: 4000, color: "#3b82f6", curve: "Sine Pulse" },
-                { name: "Transition", duration: 800, color: "#6366f1", curve: "Quad In-Out" },
-                { name: "Post-Care Loop", duration: 4600, color: "#8b5cf6", curve: "Quad In-Out" },
-                { name: "Restore", duration: 800, color: "#3b82f6", curve: "Quad In-Out" }
-            ],
-            (ms, k) => {
-                const bth = 4000, fd1 = 800, spn = 4600, fd2 = 800;
-                const total = bth + fd1 + spn + fd2;
-                let elapsed = ms % total;
-                if (elapsed < bth) {
-                    let pulse = 0.9 + 0.1 * Math.sin((elapsed/bth) * Math.PI * 2);
-                    for(let i=0; i<16; i++) k.addBrightness(i, 255 * pulse);
-                } else if (elapsed < bth + fd1) {
-                    let t = (elapsed - bth) / fd1;
-                    let b = 255 - (ease.inOutQuad(t) * (255 - 25));
-                    for(let i=0; i<16; i++) k.addBrightness(i, b);
-                } else if (elapsed < bth + fd1 + spn) {
-                    for(let i=0; i<16; i++) k.addBrightness(i, 25);
-                    let t = (elapsed - (bth + fd1)) / spn;
-                    let e = ease.inOutQuad(t);
-                    let p1 = e * 31, p2 = p1 + 8;
-                    let tailB = 255;
-                    if (t < 0.1) tailB = (t / 0.1) * 255;
-                    if (t > 0.8) tailB = (1.0 - (t - 0.8) / 0.2) * 255;
-                    for(let i=0; i<5; i++) {
-                        k.setLED(p1 - i, tailB * (1-i/5));
-                        k.setLED(p2 - i, tailB * (1-i/5));
+            if (currentPhase === 'sense') {
+                progressDesc = "The Deep Breath: A slow, ring-wide luminosity expansion centered on the Home position. Non-literal representation of weight detection.";
+                progressSteps = [{ name: "Breath Cycle", duration: 3000, color: "#3b82f6", curve: "Slow Sine" }];
+                progressDraw = (ms, k) => {
+                    k.setLED(targetIdx, 255);
+                    let t = (ms % 3000) / 3000;
+                    let wave = 0.5 + 0.5 * Math.sin(t * Math.PI * 2);
+                    for(let i=0; i<16; i++) {
+                        let dist = Math.abs(((i - HOME_IDX + 24) % 16) - 8);
+                        let falloff = 1.0 - (dist / 14); 
+                        let b = (50 + (100 * wave)) * falloff;
+                        k.addBrightness(i, b);
                     }
-                } else {
-                    let t = (elapsed - (bth + fd1 + spn)) / fd2;
-                    let b = 25 + (ease.inOutQuad(t) * (255 - 25));
-                    for(let i=0; i<16; i++) k.addBrightness(i, b);
-                }
+                };
+            } else if (currentPhase === 'wash') {
+                progressDesc = "Fluid Sway: Low-intensity pulses with a distinct bilateral shift from left to right, representing the gentle movement of water.";
+                progressSteps = [{ name: "Sway Logic", duration: 4000, color: "#6366f1", curve: "Floating Sine" }];
+                progressDraw = (ms, k) => {
+                    k.setLED(targetIdx, 255);
+                    let t = (ms % 4000) / 4000;
+                    let sway = Math.sin(t * Math.PI * 2);
+                    for(let i=0; i<16; i++) {
+                        let angle = (i / 16) * Math.PI * 2;
+                        let b = 60 + 50 * Math.sin(angle + (sway * 1.0));
+                        k.addBrightness(i, b);
+                    }
+                };
+            } else if (currentPhase === 'spin') {
+                progressDesc = "Luminous Drift: A feathered gradient rotating around the ring at high velocity to indicate centrifugal extraction.";
+                progressSteps = [{ name: "Gradient Rotation", duration: 1200, color: "#8b5cf6", curve: "Linear Drift" }];
+                progressDraw = (ms, k) => {
+                    k.setLED(targetIdx, 255);
+                    let t = (ms % 1200) / 1200;
+                    let pivot = t * 16;
+                    for(let i=0; i<16; i++) {
+                        let dist = Math.min(Math.abs(i - pivot), Math.abs(i - (pivot + 16)), Math.abs(i - (pivot - 16)));
+                        let b = Math.max(0, 150 * (1 - dist / 5));
+                        k.addBrightness(i, b + 20);
+                    }
+                };
+            } else if (currentPhase === 'dry') {
+                progressDesc = "Steady Tumble: A consistent, fairly quick rotational gradient. Faster than a wash sway but smoother than high-speed spinning.";
+                progressSteps = [{ name: "Tumble Rotation", duration: 2200, color: "#f59e0b", curve: "Linear" }];
+                progressDraw = (ms, k) => {
+                    k.setLED(targetIdx, 255);
+                    let t = (ms % 2200) / 2200;
+                    let pivot = t * 16;
+                    for(let i=0; i<16; i++) {
+                        let dist = Math.min(Math.abs(i - pivot), Math.abs(i - (pivot + 16)), Math.abs(i - (pivot - 16)));
+                        let b = Math.max(0, 130 * (1 - dist / 6)); 
+                        k.addBrightness(i, b + 30); 
+                    }
+                };
             }
-        );
 
-        // --- 4. FAULT ERROR ---
-        new AnimationInstance(
-            "Fault Error", 
-            "Rapid double-flash notification designed for maximum urgency.",
-            [
-                { name: "Burst 1", duration: 150, color: "#ef4444", curve: "Step" },
-                { name: "Gap", duration: 150, color: "#1a1a1a", curve: "Step" },
-                { name: "Burst 2", duration: 150, color: "#ef4444", curve: "Step" },
-                { name: "Brief Pause", duration: 750, color: "#1a1a1a", curve: "Step" }
-            ],
-            (ms, k) => {
-                const elapsed = ms % 1200; // 150+150+150+750
-                // Double flash logic: On at 0-150 and 300-450
-                if ((elapsed >= 0 && elapsed < 150) || (elapsed >= 300 && elapsed < 450)) {
-                    for(let i=0; i<16; i++) k.addBrightness(i, 255);
+            activeAnimations.push(new AnimationInstance(
+                "cycle-progress", "Cycle Progress", 
+                progressDesc, progressSteps, progressDraw,
+                { showPhaseTabs: true }
+            ));
+
+            // --- 3. POWER OFF ---
+            activeAnimations.push(new AnimationInstance(
+                "power-off", "Power Off", 
+                `Snappy CCW retreat back to Home.`,
+                [
+                    { name: "CCW Unwind", duration: 600, color: "#ef4444", curve: "Cubic In-Out" },
+                    { name: "Hold Sleep", duration: 2400, color: "#333", curve: "Linear" }
+                ],
+                (ms, k) => {
+                    const unwind = 600, total = 3000;
+                    let elapsed = ms % total;
+                    let dist = HOME_IDX - targetIdx;
+                    while (dist > 0) dist -= 16; 
+                    if (elapsed < unwind) {
+                        let t = elapsed / unwind;
+                        let b = t > 0.7 ? Math.pow(1-(t-0.7)/0.3, 2)*255 : 255;
+                        k.setLED(targetIdx + (ease.inOutCubic(t) * dist), b);
+                    } else if (elapsed > 2600) k.setLED(targetIdx, 255); 
                 }
-            }
-        );
+            ));
 
+            // --- 4. CYCLE END ---
+            activeAnimations.push(new AnimationInstance(
+                "cycle-end", "Cycle End", 
+                "Persistent 'breathing' ring with kinetic reminders.",
+                [
+                    { name: "Breath Ring", duration: 4000, color: "#3b82f6", curve: "Sine Pulse" },
+                    { name: "Spin / Restore", duration: 6200, color: "#8b5cf6", curve: "Quad In-Out" }
+                ],
+                (ms, k) => {
+                    const bth = 4000, fd1 = 800, spn = 4600, fd2 = 800, total = 10200;
+                    let elapsed = ms % total;
+                    if (elapsed < bth) {
+                        let pulse = 0.9 + 0.1 * Math.sin((elapsed/bth) * Math.PI * 2);
+                        for(let i=0; i<16; i++) k.addBrightness(i, 255 * pulse);
+                    } else if (elapsed < bth + fd1) {
+                        let b = 255 - (ease.inOutQuad((elapsed-bth)/fd1) * 230);
+                        for(let i=0; i<16; i++) k.addBrightness(i, b);
+                    } else if (elapsed < bth + fd1 + spn) {
+                        for(let i=0; i<16; i++) k.addBrightness(i, 25);
+                        let t = (elapsed - (bth + fd1)) / spn, e = ease.inOutQuad(t);
+                        let p1 = e * 31, p2 = p1 + 8, tailB = t < 0.1 ? (t/0.1)*255 : (t > 0.8 ? (1-(t-0.8)/0.2)*255 : 255);
+                        for(let i=0; i<5; i++) { k.setLED(p1 - i, tailB * (1-i/4.5)); k.setLED(p2 - i, tailB * (1-i/4.5)); }
+                    } else {
+                        let b = 25 + (ease.inOutQuad((elapsed-(total-fd2))/fd2) * 230);
+                        for(let i=0; i<16; i++) k.addBrightness(i, b);
+                    }
+                }
+            ));
+
+            // --- 5. FAULT ERROR ---
+            activeAnimations.push(new AnimationInstance(
+                "fault-error", "Fault Error", 
+                "Rhythmic double-flash urgency.",
+                [ { name: "Double Burst", duration: 450, color: "#ef4444", curve: "Step" }, { name: "Wait", duration: 750, color: "#1a1a1a", curve: "Step" } ],
+                (ms, k) => {
+                    const elapsed = ms % 1200; 
+                    if ((elapsed >= 0 && elapsed < 150) || (elapsed >= 300 && elapsed < 450)) for(let i=0; i<16; i++) k.addBrightness(i, 255);
+                }
+            ));
+        }
+
+        // Global Mode Toggle
+        document.querySelectorAll('#appliance-selector .tab').forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                document.querySelectorAll('#appliance-selector .tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentMode = e.target.dataset.mode;
+                
+                // Auto-sync phase
+                if (currentMode === 'dryer') {
+                    currentPhase = 'dry';
+                } else if (currentPhase === 'dry') {
+                    currentPhase = 'wash';
+                }
+                renderGallery();
+            });
+        });
+
+        renderGallery();
     </script>
 </body>
 </html>
