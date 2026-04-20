@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animation Comparison Gallery</title>
+    <style>
+        :root {
+            --bg: #1a1a1a;
+            --card-bg: #242424;
+            --text: #e0e0e0;
+            --accent: #3b82f6;
+        }
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 60px;
+            max-width: 800px;
+        }
+        .header h1 { font-weight: 700; letter-spacing: -0.02em; margin-bottom: 8px; }
+        .header p { color: #888; line-height: 1.5; }
+
+        .gallery {
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            width: 100%;
+            max-width: 900px;
+        }
+
+        .comparison-row {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            background: var(--card-bg);
+            border-radius: 24px;
+            padding: 30px;
+            gap: 40px;
+            align-items: center;
+            border: 1px solid #333;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        /* --- KNOB STYLING --- */
+        .knob-view {
+            position: relative;
+            width: 280px;
+            height: 280px;
+            justify-self: center;
+        }
+        svg {
+            width: 100%;
+            height: 100%;
+            transform: rotate(-78.75deg); /* Align LED 0 to 12 o'clock */
+        }
+        .led-bg { stroke: #333; stroke-linecap: round; stroke-width: 6; fill: none; }
+        .led {
+            stroke: #fff;
+            stroke-linecap: round;
+            stroke-width: 6;
+            fill: none;
+            opacity: 0;
+            filter: drop-shadow(0 0 5px rgba(255,255,255,0.8));
+            transition: opacity 0.016s linear;
+        }
+        .metallic-knob {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: conic-gradient(from 180deg, #777 0%, #eee 15%, #777 30%, #444 50%, #777 70%, #eee 85%, #777 100%);
+            box-shadow: 
+                0 0 0 1px #111,
+                inset 0 0 0 2px #d8d8d8,
+                inset 0 0 12px 6px rgba(0,0,0,0.4),
+                0 8px 20px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+        .metallic-knob::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0,0,0,0.7) 0%, transparent 50%, rgba(255,255,255,0.2) 100%);
+        }
+
+        /* --- TEXT STYLING --- */
+        .info h2 { margin: 0 0 12px 0; font-size: 20px; color: #fff; }
+        .info p { margin: 0 0 20px 0; font-size: 14px; color: #aaa; line-height: 1.6; }
+        
+        /* --- TIMELINE SPEC UI --- */
+        .timeline-container {
+            width: 100%;
+            background: #1c1c1c;
+            border-radius: 12px;
+            padding: 16px;
+            border: 1px solid #333;
+            font-family: "SFMono-Regular", Consolas, monospace;
+        }
+        .timeline-header {
+            color: #888;
+            font-size: 11px;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .timeline-track {
+            display: flex;
+            height: 10px;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 12px;
+            background: #111;
+        }
+        .timeline-step {
+            height: 100%;
+            border-right: 1px solid #1c1c1c;
+        }
+        .timeline-legend {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .legend-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #ccc;
+        }
+        .legend-left { display: flex; align-items: center; gap: 8px; }
+        .legend-color { width: 8px; height: 8px; border-radius: 2px; }
+        .legend-curve { color: #666; font-size: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Washing Machine UI Gallery</h1>
+        <p>Premium embedded sequence library. Hand-off ready timelines detailing physics, duration, and hardware logic for each functional state.</p>
+    </div>
+
+    <div class="gallery" id="gallery-root"></div>
+
+    <script>
+        const LED_COUNT = 16;
+        const HOME = 8;
+        const TARGET = 15; 
+
+        const ease = {
+            inOutQuad: t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2,
+            inOutCubic: t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+            outQuart: t => 1 - Math.pow(1 - t, 4),
+            linear: t => t
+        };
+
+        class AnimationInstance {
+            constructor(title, description, steps, drawFn) {
+                this.drawFn = drawFn;
+                this.steps = steps;
+                this.totalDuration = steps.reduce((acc, s) => acc + s.duration, 0);
+                this.leds = new Array(LED_COUNT).fill(0);
+                this.createUI(title, description);
+                this.animate();
+            }
+
+            createUI(title, description) {
+                const row = document.createElement('div');
+                row.className = 'comparison-row';
+                
+                let trackHTML = '';
+                let legendHTML = '';
+                
+                this.steps.forEach(step => {
+                    const pct = (step.duration / this.totalDuration) * 100;
+                    trackHTML += `<div class="timeline-step" style="width: ${pct}%; background-color: ${step.color};"></div>`;
+                    legendHTML += `
+                        <div class="legend-item">
+                            <div class="legend-left">
+                                <span class="legend-color" style="background-color: ${step.color};"></span>
+                                <span>${step.name} <span class="legend-curve">(${step.curve})</span></span>
+                            </div>
+                            <div>${step.duration}ms</div>
+                        </div>
+                    `;
+                });
+
+                row.innerHTML = `
+                    <div class="knob-view">
+                        <svg viewBox="0 0 300 300">
+                            <circle cx="150" cy="150" r="119" fill="none" stroke="#1c1c1c" stroke-width="22"></circle>
+                            <g class="led-layer"></g>
+                        </svg>
+                        <div class="metallic-knob"></div>
+                    </div>
+                    <div class="info">
+                        <h2>${title}</h2>
+                        <p>${description}</p>
+                        <div class="timeline-container">
+                            <div class="timeline-header">
+                                <span>Sequence Spec</span>
+                                <span>Loop: ${this.totalDuration}ms</span>
+                            </div>
+                            <div class="timeline-track">${trackHTML}</div>
+                            <div class="timeline-legend">${legendHTML}</div>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('gallery-root').appendChild(row);
+                this.ledElements = [];
+                const layer = row.querySelector('.led-layer');
+                for (let i = 0; i < LED_COUNT; i++) {
+                    const angle = (i / LED_COUNT) * Math.PI * 2;
+                    const x1 = 150 + Math.cos(angle) * 112, y1 = 150 + Math.sin(angle) * 112;
+                    const x2 = 150 + Math.cos(angle) * 126, y2 = 150 + Math.sin(angle) * 126;
+                    const bg = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    bg.setAttribute("x1", x1); bg.setAttribute("y1", y1); bg.setAttribute("x2", x2); bg.setAttribute("y2", y2);
+                    bg.setAttribute("class", "led-bg");
+                    layer.appendChild(bg);
+                    const fg = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    fg.setAttribute("x1", x1); fg.setAttribute("y1", y1); fg.setAttribute("x2", x2); fg.setAttribute("y2", y2);
+                    fg.setAttribute("class", "led");
+                    layer.appendChild(fg);
+                    this.ledElements.push(fg);
+                }
+            }
+
+            clear() { this.leds.fill(0); }
+            setLED(index, brightness, minLimit = -999) {
+                if (minLimit !== -999 && index < minLimit) return;
+                let i = ((index % LED_COUNT) + LED_COUNT) % LED_COUNT;
+                let floor = Math.floor(i);
+                let frac = i - floor;
+                this.addBrightness(floor, brightness * (1 - frac));
+                this.addBrightness(floor + 1, brightness * frac);
+            }
+            addBrightness(idx, val) {
+                let i = ((idx % LED_COUNT) + LED_COUNT) % LED_COUNT;
+                this.leds[i] = Math.min(255, this.leds[i] + val);
+            }
+            render() {
+                this.ledElements.forEach((el, i) => { el.style.opacity = this.leds[i] / 255; });
+            }
+            animate() {
+                const startTime = Date.now();
+                const loop = () => {
+                    this.clear();
+                    this.drawFn(Date.now() - startTime, this);
+                    this.render();
+                    requestAnimationFrame(loop);
+                };
+                loop();
+            }
+        }
+
+        // --- 1. POWER ON ---
+        new AnimationInstance(
+            "Power On", 
+            "Kinetic sweep from Home position with a calculated gap before target settle.",
+            [
+                { name: "Kinetic Sweep", duration: 1200, color: "#3b82f6", curve: "Sine In-Out" },
+                { name: "Hold Gap", duration: 150, color: "#444", curve: "Linear" },
+                { name: "Reveal Target", duration: 250, color: "#10b981", curve: "Instant" },
+                { name: "Loop Reset", duration: 2400, color: "transparent", curve: "Static" }
+            ],
+            (ms, k) => {
+                const sweep = 1200;
+                const gap = 150;
+                const total = 4000;
+                const dist = 23; 
+                let elapsed = ms % total;
+
+                if (elapsed < sweep) {
+                    let t = elapsed / sweep;
+                    let easeVal = -(Math.cos(Math.PI * t) - 1.0) / 2.0;
+                    let currentPos = HOME + (easeVal * dist);
+                    let b = 255;
+                    if (t < 0.2) b = t * 5.0 * 255;
+                    else if (t > 0.8) b = (1.0 - (t - 0.8) / 0.2) * 255;
+                    let tailStretch = Math.sin(t * Math.PI); 
+                    if (b > 0) {
+                        k.setLED(currentPos, b, HOME);
+                        if (tailStretch > 0.01) {
+                            for (let i = 1; i < 6; i++) {
+                                let tailPos = currentPos - (i * tailStretch);
+                                k.setLED(tailPos, (1.0 - (i / 6.0)) * b * tailStretch, HOME);
+                            }
+                        }
+                    }
+                } else if (elapsed > sweep + gap) {
+                    k.setLED(TARGET, 255);
+                }
+            }
+        );
+
+        // --- 2. POWER OFF ---
+        new AnimationInstance(
+            "Power Off", 
+            "Snappy counter-clockwise retreat from the active cycle back to home.",
+            [
+                { name: "CCW Unwind", duration: 600, color: "#ef4444", curve: "Cubic In-Out" },
+                { name: "Hold Sleep", duration: 2400, color: "#333", curve: "Linear" }
+            ],
+            (ms, k) => {
+                const unwind = 600;
+                const total = 3000;
+                const dist = HOME - TARGET; 
+                let elapsed = ms % total;
+                if (elapsed < unwind) {
+                    let t = elapsed / unwind;
+                    let e = ease.inOutCubic(t);
+                    let b = t > 0.7 ? Math.pow(1-(t-0.7)/0.3, 2)*255 : 255;
+                    k.setLED(TARGET + (e * dist), b);
+                } else if (elapsed > total - 400) {
+                    k.setLED(TARGET, 255); 
+                }
+            }
+        );
+
+        // --- 3. CYCLE END ---
+        new AnimationInstance(
+            "Cycle End", 
+            "Breathing notification sequence designed for persistent ambient visibility.",
+            [
+                { name: "Breath Ring", duration: 4000, color: "#3b82f6", curve: "Sine Pulse" },
+                { name: "Transition", duration: 800, color: "#6366f1", curve: "Quad In-Out" },
+                { name: "Post-Care Loop", duration: 4600, color: "#8b5cf6", curve: "Quad In-Out" },
+                { name: "Restore", duration: 800, color: "#3b82f6", curve: "Quad In-Out" }
+            ],
+            (ms, k) => {
+                const bth = 4000, fd1 = 800, spn = 4600, fd2 = 800;
+                const total = bth + fd1 + spn + fd2;
+                let elapsed = ms % total;
+                if (elapsed < bth) {
+                    let pulse = 0.9 + 0.1 * Math.sin((elapsed/bth) * Math.PI * 2);
+                    for(let i=0; i<16; i++) k.addBrightness(i, 255 * pulse);
+                } else if (elapsed < bth + fd1) {
+                    let t = (elapsed - bth) / fd1;
+                    let b = 255 - (ease.inOutQuad(t) * (255 - 25));
+                    for(let i=0; i<16; i++) k.addBrightness(i, b);
+                } else if (elapsed < bth + fd1 + spn) {
+                    for(let i=0; i<16; i++) k.addBrightness(i, 25);
+                    let t = (elapsed - (bth + fd1)) / spn;
+                    let e = ease.inOutQuad(t);
+                    let p1 = e * 31, p2 = p1 + 8;
+                    let tailB = 255;
+                    if (t < 0.1) tailB = (t / 0.1) * 255;
+                    if (t > 0.8) tailB = (1.0 - (t - 0.8) / 0.2) * 255;
+                    for(let i=0; i<5; i++) {
+                        k.setLED(p1 - i, tailB * (1-i/5));
+                        k.setLED(p2 - i, tailB * (1-i/5));
+                    }
+                } else {
+                    let t = (elapsed - (bth + fd1 + spn)) / fd2;
+                    let b = 25 + (ease.inOutQuad(t) * (255 - 25));
+                    for(let i=0; i<16; i++) k.addBrightness(i, b);
+                }
+            }
+        );
+
+        // --- 4. FAULT ERROR ---
+        new AnimationInstance(
+            "Fault Error", 
+            "Rapid double-flash notification designed for maximum urgency.",
+            [
+                { name: "Burst 1", duration: 150, color: "#ef4444", curve: "Step" },
+                { name: "Gap", duration: 150, color: "#1a1a1a", curve: "Step" },
+                { name: "Burst 2", duration: 150, color: "#ef4444", curve: "Step" },
+                { name: "Brief Pause", duration: 750, color: "#1a1a1a", curve: "Step" }
+            ],
+            (ms, k) => {
+                const elapsed = ms % 1200; // 150+150+150+750
+                // Double flash logic: On at 0-150 and 300-450
+                if ((elapsed >= 0 && elapsed < 150) || (elapsed >= 300 && elapsed < 450)) {
+                    for(let i=0; i<16; i++) k.addBrightness(i, 255);
+                }
+            }
+        );
+
+    </script>
+</body>
+</html>
