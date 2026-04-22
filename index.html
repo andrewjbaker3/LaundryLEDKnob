@@ -264,7 +264,6 @@
                             <div class="phase-tab ${currentPhase === 'wash' ? 'active' : ''}" data-phase="wash">Wash</div>
                             <div class="phase-tab ${currentPhase === 'spin' ? 'active' : ''}" data-phase="spin">Spin</div>
                         ` : `
-                            <div class="phase-tab ${currentPhase === 'sense' ? 'active' : ''}" data-phase="sense">Sense</div>
                             <div class="phase-tab ${currentPhase === 'dry' ? 'active' : ''}" data-phase="dry">Drying</div>
                         `}
                     </div>
@@ -408,14 +407,11 @@
                 progressDraw = (ms, k) => {
                     k.setLED(targetIdx, 255);
                     let t = (ms % 2400) / 2400;
-                    // Oscillate position between Index 4 and 12 (centered on Home Index 8)
                     let scanOffset = 4.5 * Math.sin(t * Math.PI * 2);
                     let scanPos = 8 + scanOffset;
-                    
                     for(let i=0; i<16; i++) {
                         let dist = Math.abs(i - scanPos);
                         if (dist > 8) dist = 16 - dist;
-                        // Sharp focused beam
                         let b = Math.max(0, 220 * (1 - dist / 2.5));
                         k.addBrightness(i, b + 20);
                     }
@@ -447,7 +443,7 @@
                     }
                 };
             } else if (currentPhase === 'dry') {
-                progressDesc = "Steady Tumble: Consistent rotational gradient.";
+                progressDesc = "Steady Tumble: Consistent rotational gradient at a lower intensity for ambient feedback during drying phases.";
                 progressSteps = [{ name: "Tumble Rotation", duration: 2200, color: "#f59e0b", curve: "Linear" }];
                 progressDraw = (ms, k) => {
                     k.setLED(targetIdx, 255);
@@ -455,8 +451,9 @@
                     let pivot = t * 16;
                     for(let i=0; i<16; i++) {
                         let dist = Math.min(Math.abs(i - pivot), Math.abs(i - (pivot + 16)), Math.abs(i - (pivot - 16)));
-                        let b = Math.max(0, 160 * (1 - dist / 6)); 
-                        k.addBrightness(i, b + 40); 
+                        // Reduced peak from 160 to 120, and floor from 40 to 20 for a dimmer look
+                        let b = Math.max(0, 120 * (1 - dist / 6)); 
+                        k.addBrightness(i, b + 20); 
                     }
                 };
             }
