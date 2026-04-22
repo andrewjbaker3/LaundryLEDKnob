@@ -113,7 +113,7 @@
         svg {
             width: 100%;
             height: 100%;
-            transform: rotate(-78.75deg); /* Align LED #1 (Index 0) to 12 o'clock */
+            transform: rotate(-78.75deg); /* Align LED #1 to 12 o'clock */
         }
         .led-bg { stroke: #2a2a2a; stroke-linecap: round; stroke-width: 6; fill: none; }
         .led {
@@ -121,7 +121,7 @@
             stroke-linecap: round;
             stroke-width: 6;
             fill: none;
-            opacity: 0.02; /* Darkened floor for visibility when off */
+            opacity: 0.02; 
             filter: drop-shadow(0 0 5px rgba(255,255,255,0.8));
             transition: opacity 0.016s linear;
         }
@@ -199,7 +199,7 @@
 
     <div class="header">
         <h1>E&H LED Knob Behavior</h1>
-        <p>Physical LED Alignment: #1 at 12 o'clock, incrementing Clockwise to #16. Home Position at LED #9.</p>
+        <p>Physical LED Alignment: #1 at 12 o'clock, incrementing Clockwise to #16. Home Position at LED #9 (6 o'clock).</p>
         
         <div class="global-tabs" id="appliance-selector">
             <div class="tab active" data-mode="washer">Washer</div>
@@ -211,7 +211,7 @@
 
     <script>
         const LED_COUNT = 16;
-        const HOME_IDX = 8; // Physical LED #9
+        const HOME_IDX = 8; 
         
         let currentMode = 'washer';
         let currentPhase = 'sense'; 
@@ -219,8 +219,8 @@
 
         const ease = {
             inOutQuad: t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2,
-            inOutCubic: t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
-            outQuart: t => 1 - Math.pow(1 - t, 4),
+            inQuad: t => t * t, // Quadratic acceleration (Gravity)
+            outCubic: t => 1 - Math.pow(1 - t, 3),
             linear: t => t
         };
 
@@ -306,13 +306,11 @@
                 const layer = row.querySelector('.led-layer');
                 for (let i = 0; i < LED_COUNT; i++) {
                     const angle = (i / LED_COUNT) * Math.PI * 2;
-                    
                     const bgLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
                     bgLine.setAttribute("x1", 150 + Math.cos(angle) * 112); bgLine.setAttribute("y1", 150 + Math.sin(angle) * 112);
                     bgLine.setAttribute("x2", 150 + Math.cos(angle) * 126); bgLine.setAttribute("y2", 150 + Math.sin(angle) * 126);
                     bgLine.setAttribute("class", "led-bg");
                     layer.appendChild(bgLine);
-
                     const fg = document.createElementNS("http://www.w3.org/2000/svg", "line");
                     fg.setAttribute("x1", 150 + Math.cos(angle) * 112); fg.setAttribute("y1", 150 + Math.sin(angle) * 112);
                     fg.setAttribute("x2", 150 + Math.cos(angle) * 126); fg.setAttribute("y2", 150 + Math.sin(angle) * 126);
@@ -324,8 +322,7 @@
 
             destroy() { this.isDestroyed = true; }
             clear() { this.leds.fill(0); }
-            setLED(index, brightness, limit = -999) {
-                if (limit !== -999 && index < limit) return;
+            setLED(index, brightness) {
                 let i = ((index % LED_COUNT) + LED_COUNT) % LED_COUNT;
                 let floor = Math.floor(i), frac = i - floor;
                 this.addBrightness(floor, brightness * (1 - frac));
@@ -337,7 +334,6 @@
             }
             render() { 
                 this.ledElements.forEach((el, i) => { 
-                    // Maintain a floor of 0.02 opacity even when brightness is 0
                     const activeOpacity = this.leds[i] / 255;
                     el.style.opacity = 0.02 + (activeOpacity * 0.98); 
                 }); 
@@ -361,41 +357,41 @@
             document.getElementById('gallery-root').innerHTML = '';
 
             const targetIdx = currentMode === 'washer' ? 14 : 5;
-            const targetLabel = currentMode === 'washer' ? "LED #15" : "LED #6";
-            const cycleName = currentMode === 'washer' ? "AI Wash cycle" : "Normal cycle (energy-testing standard)";
 
             // --- 1. POWER ON ---
             activeAnimations.push(new AnimationInstance(
-                "power-on", "Power On", 
-                `Kinetic sweep from Home (LED #9) settling immediately on ${targetLabel} for the ${cycleName}.`,
+                "power-on", "Power On (Symmetric Collapse)", 
+                `Refined physics: brief pause, full bloom, and an accelerated symmetric retraction to ensure a clean landing on the selection.`,
                 [
-                    { name: "Kinetic Sweep", duration: 1200, color: "#3b82f6", curve: "Sine In-Out" },
-                    { name: "Reveal Target", duration: 250, color: "#10b981", curve: "Instant" },
-                    { name: "Loop Reset", duration: 2550, color: "transparent", curve: "Static" }
+                    { name: "Preparation", duration: 300, color: "#222", curve: "Wait" },
+                    { name: "Global Bloom", duration: 700, color: "#3b82f6", curve: "Sine" },
+                    { name: "Retraction", duration: 1000, color: "#fff", curve: "Cubic-Out" },
+                    { name: "Hold", duration: 1500, color: "transparent", curve: "Static" }
                 ],
                 (ms, k) => {
-                    const sweep = 1200, total = 4000;
-                    let baseDist = (targetIdx - HOME_IDX);
-                    while (baseDist < 0) baseDist += 16;
-                    const dist = baseDist + 16; 
+                    const total = 3500, prep = 300, bloom = 700, retract = 1000;
                     let elapsed = ms % total;
-                    
-                    if (elapsed < sweep) {
-                        let t = elapsed / sweep;
-                        let easeVal = -(Math.cos(Math.PI * t) - 1.0) / 2.0;
-                        let currentPos = HOME_IDX + (easeVal * dist);
-                        let b = t < 0.2 ? t * 5 * 255 : 255; 
-                        let tailStretch = Math.sin(t * Math.PI); 
-                        if (b > 0) {
-                            k.setLED(currentPos, b, HOME_IDX);
-                            for (let i = 1; i < 6; i++) {
-                                let tailPos = currentPos - (i * tailStretch);
-                                let tailB = (1 - (i / 6.0)) * b * tailStretch;
-                                if (t > 0.9) tailB *= (1.0 - (t - 0.9) / 0.1); 
-                                k.setLED(tailPos, tailB, HOME_IDX);
+                    if (elapsed < prep) {
+                    } else if (elapsed < prep + bloom) {
+                        let t = (elapsed - prep) / bloom;
+                        let b = t * 180;
+                        for(let i=0; i<16; i++) k.addBrightness(i, b);
+                    } else if (elapsed < prep + bloom + retract) {
+                        let t = (elapsed - (prep + bloom)) / retract;
+                        let easeVal = ease.outCubic(t);
+                        for(let i=0; i<16; i++) {
+                            let dist = Math.abs(i - targetIdx);
+                            if (dist > 8) dist = 16 - dist;
+                            let normDist = dist / 8; 
+                            let threshold = 1.0 - easeVal;
+                            if (normDist <= threshold) {
+                                k.addBrightness(i, 180 + (t * 75));
+                            } else {
+                                let fadeOut = Math.max(0, 1.0 - (easeVal - (1.0 - normDist)) * 10);
+                                k.addBrightness(i, 180 * fadeOut);
                             }
                         }
-                    } else if (elapsed < total) {
+                    } else {
                         k.setLED(targetIdx, 255);
                     }
                 }
@@ -407,21 +403,25 @@
             let progressDesc = "";
 
             if (currentPhase === 'sense') {
-                progressDesc = "The Deep Breath: A slow, ring-wide luminosity expansion centered on the Home position. Non-literal representation of weight detection.";
-                progressSteps = [{ name: "Breath Cycle", duration: 3000, color: "#3b82f6", curve: "Slow Sine" }];
+                progressDesc = "Active Load Scan: A high-contrast beam originates from the 6 o'clock position and oscillates back and forth, simulating the active detection of weight and load distribution.";
+                progressSteps = [{ name: "Pendulum Scan", duration: 2400, color: "#3b82f6", curve: "Sine Oscillation" }];
                 progressDraw = (ms, k) => {
                     k.setLED(targetIdx, 255);
-                    let t = (ms % 3000) / 3000;
-                    let wave = 0.5 + 0.5 * Math.sin(t * Math.PI * 2);
+                    let t = (ms % 2400) / 2400;
+                    // Oscillate position between Index 4 and 12 (centered on Home Index 8)
+                    let scanOffset = 4.5 * Math.sin(t * Math.PI * 2);
+                    let scanPos = 8 + scanOffset;
+                    
                     for(let i=0; i<16; i++) {
-                        let dist = Math.abs(((i - HOME_IDX + 24) % 16) - 8);
-                        let falloff = 1.0 - (dist / 14); 
-                        let b = (50 + (100 * wave)) * falloff;
-                        k.addBrightness(i, b);
+                        let dist = Math.abs(i - scanPos);
+                        if (dist > 8) dist = 16 - dist;
+                        // Sharp focused beam
+                        let b = Math.max(0, 220 * (1 - dist / 2.5));
+                        k.addBrightness(i, b + 20);
                     }
                 };
             } else if (currentPhase === 'wash') {
-                progressDesc = "Fluid Sway: Low-intensity pulses with a distinct bilateral shift from left to right, representing the gentle movement of water.";
+                progressDesc = "Fluid Sway: Low-intensity pulses with a distinct bilateral shift representing water.";
                 progressSteps = [{ name: "Sway Logic", duration: 4000, color: "#6366f1", curve: "Floating Sine" }];
                 progressDraw = (ms, k) => {
                     k.setLED(targetIdx, 255);
@@ -429,12 +429,12 @@
                     let sway = Math.sin(t * Math.PI * 2);
                     for(let i=0; i<16; i++) {
                         let angle = (i / 16) * Math.PI * 2;
-                        let b = 60 + 50 * Math.sin(angle + (sway * 1.0));
+                        let b = 80 + 70 * Math.sin(angle + (sway * 1.0));
                         k.addBrightness(i, b);
                     }
                 };
             } else if (currentPhase === 'spin') {
-                progressDesc = "Luminous Drift: A feathered gradient rotating around the ring at high velocity to indicate centrifugal extraction.";
+                progressDesc = "Luminous Drift: Feathered gradient indicating centrifugal extraction.";
                 progressSteps = [{ name: "Gradient Rotation", duration: 1200, color: "#8b5cf6", curve: "Linear Drift" }];
                 progressDraw = (ms, k) => {
                     k.setLED(targetIdx, 255);
@@ -447,7 +447,7 @@
                     }
                 };
             } else if (currentPhase === 'dry') {
-                progressDesc = "Steady Tumble: A consistent, fairly quick rotational gradient. Faster than a wash sway but smoother than high-speed spinning.";
+                progressDesc = "Steady Tumble: Consistent rotational gradient.";
                 progressSteps = [{ name: "Tumble Rotation", duration: 2200, color: "#f59e0b", curve: "Linear" }];
                 progressDraw = (ms, k) => {
                     k.setLED(targetIdx, 255);
@@ -455,93 +455,109 @@
                     let pivot = t * 16;
                     for(let i=0; i<16; i++) {
                         let dist = Math.min(Math.abs(i - pivot), Math.abs(i - (pivot + 16)), Math.abs(i - (pivot - 16)));
-                        let b = Math.max(0, 130 * (1 - dist / 6)); 
-                        k.addBrightness(i, b + 30); 
+                        let b = Math.max(0, 160 * (1 - dist / 6)); 
+                        k.addBrightness(i, b + 40); 
                     }
                 };
             }
 
-            activeAnimations.push(new AnimationInstance(
-                "cycle-progress", "Cycle Progress", 
-                progressDesc, progressSteps, progressDraw,
-                { showPhaseTabs: true }
-            ));
+            activeAnimations.push(new AnimationInstance("cycle-progress", "Cycle Progress", progressDesc, progressSteps, progressDraw, { showPhaseTabs: true }));
 
             // --- 3. POWER OFF ---
             activeAnimations.push(new AnimationInstance(
-                "power-off", "Power Off", 
-                `Snappy CCW retreat back to Home.`,
+                "power-off", "Power Off (Gravity-Accelerated Sweep)", 
+                `When the system is triggered to power off, a centric beam of light originates between the top LEDs and accelerates downward using gravitational physics (quadratic acceleration), wiping the ring clean as it falls toward the bottom.`,
                 [
-                    { name: "CCW Unwind", duration: 600, color: "#ef4444", curve: "Cubic In-Out" },
-                    { name: "Hold Sleep", duration: 2400, color: "#333", curve: "Linear" }
+                    { name: "Active Selection", duration: 1000, color: "#3b82f6", curve: "Static" },
+                    { name: "Gravitational Sweep", duration: 800, color: "#fff", curve: "Quadratic In" },
+                    { name: "Off", duration: 1200, color: "transparent", curve: "Static" }
                 ],
                 (ms, k) => {
-                    const unwind = 600, total = 3000;
+                    const hold = 1000, sweep = 800, total = 3000;
                     let elapsed = ms % total;
-                    let dist = HOME_IDX - targetIdx;
-                    while (dist > 0) dist -= 16; 
-                    if (elapsed < unwind) {
-                        let t = elapsed / unwind;
-                        let b = t > 0.7 ? Math.pow(1-(t-0.7)/0.3, 2)*255 : 255;
-                        k.setLED(targetIdx + (ease.inOutCubic(t) * dist), b);
-                    } else if (elapsed > 2600) k.setLED(targetIdx, 255); 
+                    if (elapsed < hold) {
+                        k.setLED(targetIdx, 255);
+                    } else if (elapsed < hold + sweep) {
+                        let t = (elapsed - hold) / sweep;
+                        let scanPos = ease.inQuad(t) * 8; 
+                        for(let i=0; i<16; i++) {
+                            let distFromMid = Math.abs(i - (-0.5));
+                            if (distFromMid > 8) distFromMid = 16 - distFromMid;
+                            let relativeDist = distFromMid - 0.5;
+                            let beamIntensity = Math.max(0, 255 * (1 - Math.abs(relativeDist - scanPos) / 1.1));
+                            k.addBrightness(i, beamIntensity);
+                            if (relativeDist > scanPos) {
+                                if (i === targetIdx) k.addBrightness(i, 255);
+                            }
+                        }
+                    }
                 }
             ));
 
             // --- 4. CYCLE END ---
             activeAnimations.push(new AnimationInstance(
-                "cycle-end", "Cycle End", 
-                "Persistent 'breathing' ring with kinetic reminders.",
+                "cycle-end", "Cycle End with Post-Care", 
+                "A full-ring ambient beacon signals cycle completion, periodically transitioning into kinetic rotational sequences to reflect active drum tumbling and aeration during the Post-Care phase.",
                 [
-                    { name: "Breath Ring", duration: 4000, color: "#3b82f6", curve: "Sine Pulse" },
-                    { name: "Spin / Restore", duration: 6200, color: "#8b5cf6", curve: "Quad In-Out" }
+                    { name: "Persistent Beacon", duration: 10000, color: "#3b82f6", curve: "Slow Pulse" },
+                    { name: "Transition Down", duration: 800, color: "#444", curve: "Ease-Out" },
+                    { name: "Tumble Rotation", duration: 4000, color: "#8b5cf6", curve: "Quad In-Out" },
+                    { name: "Transition Up", duration: 800, color: "#444", curve: "Ease-In" }
                 ],
                 (ms, k) => {
-                    const bth = 4000, fd1 = 800, spn = 4600, fd2 = 800, total = 10200;
+                    const bth = 10000, fd1 = 800, spn = 4000, fd2 = 800;
+                    const total = bth + fd1 + spn + fd2;
                     let elapsed = ms % total;
                     if (elapsed < bth) {
-                        let pulse = 0.9 + 0.1 * Math.sin((elapsed/bth) * Math.PI * 2);
+                        let pulse = 0.9 + 0.1 * Math.sin((elapsed/4000) * Math.PI * 2);
                         for(let i=0; i<16; i++) k.addBrightness(i, 255 * pulse);
                     } else if (elapsed < bth + fd1) {
-                        let b = 255 - (ease.inOutQuad((elapsed-bth)/fd1) * 230);
+                        let t = (elapsed - bth) / fd1;
+                        let b = 255 - (ease.inOutQuad(t) * 230);
                         for(let i=0; i<16; i++) k.addBrightness(i, b);
                     } else if (elapsed < bth + fd1 + spn) {
                         for(let i=0; i<16; i++) k.addBrightness(i, 25);
-                        let t = (elapsed - (bth + fd1)) / spn, e = ease.inOutQuad(t);
-                        let p1 = e * 31, p2 = p1 + 8, tailB = t < 0.1 ? (t/0.1)*255 : (t > 0.8 ? (1-(t-0.8)/0.2)*255 : 255);
-                        for(let i=0; i<5; i++) { k.setLED(p1 - i, tailB * (1-i/4.5)); k.setLED(p2 - i, tailB * (1-i/4.5)); }
+                        let t = (elapsed - (bth + fd1)) / spn;
+                        let e = ease.inOutQuad(t);
+                        let p1 = e * 31, p2 = p1 + 8;
+                        let tailB = t < 0.1 ? (t/0.1)*255 : (t > 0.8 ? (1-(t-0.8)/0.2)*255 : 255);
+                        for(let i=0; i<5; i++) { 
+                            k.setLED(p1 - i, tailB * (1-i/4.5)); 
+                            k.setLED(p2 - i, tailB * (1-i/4.5)); 
+                        }
                     } else {
-                        let b = 25 + (ease.inOutQuad((elapsed-(total-fd2))/fd2) * 230);
+                        let t = (elapsed - (bth + fd1 + spn)) / fd2;
+                        let b = 25 + (ease.inOutQuad(t) * 230);
                         for(let i=0; i<16; i++) k.addBrightness(i, b);
                     }
                 }
             ));
 
-            // --- 5. FAULT ERROR ---
+            // --- 5. FAULT ALERT ---
             activeAnimations.push(new AnimationInstance(
-                "fault-error", "Fault Error", 
-                "Rhythmic double-flash urgency.",
-                [ { name: "Double Burst", duration: 450, color: "#ef4444", curve: "Step" }, { name: "Wait", duration: 750, color: "#1a1a1a", curve: "Step" } ],
+                "fault-alert", "Fault / Hard-Stop Alert", 
+                `A rhythmic high-urgency double pulse across the entire ring.`,
+                [
+                    { name: "Double Burst", duration: 450, color: "#ef4444", curve: "Sharp Pulse" },
+                    { name: "Wait", duration: 750, color: "#1a1a1a", curve: "Hold" }
+                ],
                 (ms, k) => {
-                    const elapsed = ms % 1200; 
-                    if ((elapsed >= 0 && elapsed < 150) || (elapsed >= 300 && elapsed < 450)) for(let i=0; i<16; i++) k.addBrightness(i, 255);
+                    const cycle = 1200;
+                    let elapsed = ms % cycle;
+                    if ((elapsed >= 0 && elapsed < 150) || (elapsed >= 300 && elapsed < 450)) {
+                        for(let i=0; i<16; i++) k.addBrightness(i, 255);
+                    }
                 }
             ));
         }
 
-        // Global Mode Toggle
         document.querySelectorAll('#appliance-selector .tab').forEach(tab => {
             tab.addEventListener('click', (e) => {
                 document.querySelectorAll('#appliance-selector .tab').forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
                 currentMode = e.target.dataset.mode;
-                
-                // Auto-sync phase
-                if (currentMode === 'dryer') {
-                    currentPhase = 'dry';
-                } else if (currentPhase === 'dry') {
-                    currentPhase = 'wash';
-                }
+                if (currentMode === 'dryer') currentPhase = 'dry';
+                else if (currentPhase === 'dry') currentPhase = 'wash';
                 renderGallery();
             });
         });
