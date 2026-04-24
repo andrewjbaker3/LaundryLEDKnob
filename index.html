@@ -193,6 +193,66 @@
         .legend-left { display: flex; align-items: center; gap: 8px; }
         .legend-color { width: 8px; height: 8px; border-radius: 2px; }
         .legend-curve { color: #666; font-size: 10px; }
+
+        /* --- DETAILED HANDOFF SPEC STYLES --- */
+        .spec-details {
+            margin-top: 16px;
+            background: #151515;
+            border-radius: 8px;
+            border: 1px solid #333;
+            overflow: hidden;
+        }
+        .spec-summary {
+            padding: 12px 16px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            user-select: none;
+            transition: color 0.2s, background 0.2s;
+            list-style: none; /* Hide default triangle */
+        }
+        .spec-summary::-webkit-details-marker { display: none; }
+        .spec-summary::before {
+            content: '▶';
+            display: inline-block;
+            margin-right: 8px;
+            font-size: 10px;
+            transition: transform 0.2s ease-in-out;
+        }
+        details.spec-details[open] .spec-summary::before {
+            transform: rotate(90deg);
+        }
+        .spec-summary:hover { color: #fff; background: #1a1a1a; }
+        .spec-content {
+            padding: 16px;
+            border-top: 1px solid #333;
+        }
+        .spec-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: "SFMono-Regular", Consolas, monospace;
+        }
+        .spec-table th {
+            text-align: left;
+            padding: 4px 8px;
+            font-size: 10px;
+            color: #888;
+            border-bottom: 1px solid #444;
+            text-transform: uppercase;
+        }
+        .spec-table td {
+            padding: 8px 8px;
+            font-size: 11px;
+            color: #ccc;
+            border-bottom: 1px solid #222;
+            vertical-align: top;
+            line-height: 1.4;
+        }
+        .spec-table tr:last-child td { border-bottom: none; }
+        .spec-highlight { color: #fff; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -269,6 +329,15 @@
                     </div>
                 ` : '';
 
+                const specHTML = this.config.specHTML ? `
+                    <details class="spec-details">
+                        <summary class="spec-summary">View Technical Spec</summary>
+                        <div class="spec-content">
+                            ${this.config.specHTML}
+                        </div>
+                    </details>
+                ` : '';
+
                 row.innerHTML = `
                     <div class="knob-view">
                         <svg viewBox="0 0 300 300">
@@ -289,6 +358,7 @@
                             <div class="timeline-track">${trackHTML}</div>
                             <div class="timeline-legend">${legendHTML}</div>
                         </div>
+                        ${specHTML}
                     </div>
                 `;
                 
@@ -393,6 +463,17 @@
                     } else {
                         k.setLED(targetIdx, 255);
                     }
+                },
+                {
+                    specHTML: `
+                        <table class="spec-table">
+                            <tr><th>Time (ms)</th><th>Phase</th><th>LED States (0-255)</th><th>Curve</th></tr>
+                            <tr><td>0 - 300</td><td>Prep</td><td>All LEDs: <span class="spec-highlight">0</span></td><td>Wait</td></tr>
+                            <tr><td>300 - 1000</td><td>Bloom</td><td>All LEDs: <span class="spec-highlight">0 &rarr; 180</span></td><td>Sine</td></tr>
+                            <tr><td>1000 - 2000</td><td>Retraction</td><td>Target LED: <span class="spec-highlight">180 &rarr; 255</span><br>Other LEDs: <span class="spec-highlight">180 &rarr; 0</span> (10x dist falloff)</td><td>Cubic-Out</td></tr>
+                            <tr><td>2000+</td><td>Hold</td><td>Target LED: <span class="spec-highlight">255</span><br>Other LEDs: <span class="spec-highlight">0</span></td><td>Static</td></tr>
+                        </table>
+                    `
                 }
             ));
 
@@ -400,6 +481,7 @@
             let progressSteps = [];
             let progressDraw = () => {};
             let progressDesc = "";
+            let progressSpecHTML = "";
 
             if (currentPhase === 'sense') {
                 progressDesc = "Active Load Scan: A high-contrast beam originates from the 6 o'clock position and oscillates back and forth, simulating the active detection of weight and load distribution.";
@@ -416,6 +498,12 @@
                         k.addBrightness(i, b + 20);
                     }
                 };
+                progressSpecHTML = `
+                    <table class="spec-table">
+                        <tr><th>Time (ms)</th><th>Phase</th><th>LED States (0-255)</th><th>Curve</th></tr>
+                        <tr><td>0 - 2400<br>(Loop)</td><td>Pendulum</td><td>Target LED: <span class="spec-highlight">255</span><br>Ring Base: <span class="spec-highlight">20</span><br>Ring Peak: <span class="spec-highlight">240</span> (Oscillates Index 3.5 &harr; 12.5)</td><td>Sine</td></tr>
+                    </table>
+                `;
             } else if (currentPhase === 'wash') {
                 progressDesc = "Fluid Sway: Low-intensity pulses with a distinct bilateral shift representing water.";
                 progressSteps = [{ name: "Sway Logic", duration: 4000, color: "#6366f1", curve: "Floating Sine" }];
@@ -429,6 +517,12 @@
                         k.addBrightness(i, b);
                     }
                 };
+                progressSpecHTML = `
+                    <table class="spec-table">
+                        <tr><th>Time (ms)</th><th>Phase</th><th>LED States (0-255)</th><th>Curve</th></tr>
+                        <tr><td>0 - 4000<br>(Loop)</td><td>Sway</td><td>Target LED: <span class="spec-highlight">255</span><br>Ring Base: <span class="spec-highlight">10</span><br>Ring Peak: <span class="spec-highlight">150</span> (Bilateral shift logic)</td><td>Sine</td></tr>
+                    </table>
+                `;
             } else if (currentPhase === 'spin') {
                 progressDesc = "Luminous Drift: Feathered gradient indicating centrifugal extraction.";
                 progressSteps = [{ name: "Gradient Rotation", duration: 1200, color: "#8b5cf6", curve: "Linear Drift" }];
@@ -442,6 +536,12 @@
                         k.addBrightness(i, b + 20);
                     }
                 };
+                progressSpecHTML = `
+                    <table class="spec-table">
+                        <tr><th>Time (ms)</th><th>Phase</th><th>LED States (0-255)</th><th>Curve</th></tr>
+                        <tr><td>0 - 1200<br>(Loop)</td><td>Drift</td><td>Target LED: <span class="spec-highlight">255</span><br>Ring Base: <span class="spec-highlight">20</span><br>Ring Peak: <span class="spec-highlight">170</span> (5-LED gradient tail)</td><td>Linear</td></tr>
+                    </table>
+                `;
             } else if (currentPhase === 'dry') {
                 progressDesc = "Steady Tumble: Consistent rotational gradient at a lower intensity for ambient feedback during drying phases.";
                 progressSteps = [{ name: "Tumble Rotation", duration: 2200, color: "#f59e0b", curve: "Linear" }];
@@ -451,14 +551,19 @@
                     let pivot = t * 16;
                     for(let i=0; i<16; i++) {
                         let dist = Math.min(Math.abs(i - pivot), Math.abs(i - (pivot + 16)), Math.abs(i - (pivot - 16)));
-                        // Reduced peak from 160 to 120, and floor from 40 to 20 for a dimmer look
                         let b = Math.max(0, 120 * (1 - dist / 6)); 
                         k.addBrightness(i, b + 20); 
                     }
                 };
+                progressSpecHTML = `
+                    <table class="spec-table">
+                        <tr><th>Time (ms)</th><th>Phase</th><th>LED States (0-255)</th><th>Curve</th></tr>
+                        <tr><td>0 - 2200<br>(Loop)</td><td>Tumble</td><td>Target LED: <span class="spec-highlight">255</span><br>Ring Base: <span class="spec-highlight">20</span><br>Ring Peak: <span class="spec-highlight">140</span> (6-LED gradient tail)</td><td>Linear</td></tr>
+                    </table>
+                `;
             }
 
-            activeAnimations.push(new AnimationInstance("cycle-progress", "Cycle Progress", progressDesc, progressSteps, progressDraw, { showPhaseTabs: true }));
+            activeAnimations.push(new AnimationInstance("cycle-progress", "Cycle Progress", progressDesc, progressSteps, progressDraw, { showPhaseTabs: true, specHTML: progressSpecHTML }));
 
             // --- 3. POWER OFF ---
             activeAnimations.push(new AnimationInstance(
@@ -488,6 +593,16 @@
                             }
                         }
                     }
+                },
+                {
+                    specHTML: `
+                        <table class="spec-table">
+                            <tr><th>Time (ms)</th><th>Phase</th><th>LED States (0-255)</th><th>Curve</th></tr>
+                            <tr><td>0 - 1000</td><td>Hold</td><td>Target LED: <span class="spec-highlight">255</span><br>Other LEDs: <span class="spec-highlight">0</span></td><td>Static</td></tr>
+                            <tr><td>1000 - 1800</td><td>Sweep</td><td>Wipe Origin: Index -0.5 (Top Dead Center).<br>Target LED: <span class="spec-highlight">255 &rarr; 0</span> (as beam passes).<br>Other LEDs: <span class="spec-highlight">0</span> (unless hit by beam peak).</td><td>Quadratic-In</td></tr>
+                            <tr><td>1800+</td><td>Off</td><td>All LEDs: <span class="spec-highlight">0</span></td><td>Static</td></tr>
+                        </table>
+                    `
                 }
             ));
 
@@ -527,6 +642,17 @@
                         let b = 25 + (ease.inOutQuad(t) * 230);
                         for(let i=0; i<16; i++) k.addBrightness(i, b);
                     }
+                },
+                {
+                    specHTML: `
+                        <table class="spec-table">
+                            <tr><th>Time (s)</th><th>Phase</th><th>LED States (0-255)</th><th>Curve</th></tr>
+                            <tr><td>0.0 - 10.0</td><td>Beacon</td><td>All LEDs: Pulse <span class="spec-highlight">204 &harr; 255</span></td><td>Sine</td></tr>
+                            <tr><td>10.0 - 10.8</td><td>Trans-D</td><td>All LEDs: <span class="spec-highlight">255 &rarr; 25</span></td><td>Quad In-Out</td></tr>
+                            <tr><td>10.8 - 14.8</td><td>Tumble</td><td>Ring Base: <span class="spec-highlight">25</span><br>Dual Spinners: Peak <span class="spec-highlight">255</span> (Length 5 gradient)</td><td>Quad In-Out</td></tr>
+                            <tr><td>14.8 - 15.6</td><td>Trans-U</td><td>All LEDs: <span class="spec-highlight">25 &rarr; 255</span></td><td>Quad In-Out</td></tr>
+                        </table>
+                    `
                 }
             ));
 
@@ -544,6 +670,17 @@
                     if ((elapsed >= 0 && elapsed < 150) || (elapsed >= 300 && elapsed < 450)) {
                         for(let i=0; i<16; i++) k.addBrightness(i, 255);
                     }
+                },
+                {
+                    specHTML: `
+                        <table class="spec-table">
+                            <tr><th>Time (ms)</th><th>Phase</th><th>LED States (0-255)</th><th>Curve</th></tr>
+                            <tr><td>0 - 150</td><td>Pulse 1</td><td>All LEDs: <span class="spec-highlight">255</span></td><td>Instant</td></tr>
+                            <tr><td>150 - 300</td><td>Off</td><td>All LEDs: <span class="spec-highlight">0</span></td><td>Instant</td></tr>
+                            <tr><td>300 - 450</td><td>Pulse 2</td><td>All LEDs: <span class="spec-highlight">255</span></td><td>Instant</td></tr>
+                            <tr><td>450 - 1200</td><td>Wait</td><td>All LEDs: <span class="spec-highlight">0</span></td><td>Instant</td></tr>
+                        </table>
+                    `
                 }
             ));
         }
